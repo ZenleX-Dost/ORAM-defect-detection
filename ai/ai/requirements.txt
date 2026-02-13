@@ -1,0 +1,27 @@
+# ORAM – Intelligent Inspection Platform
+# Dependencies
+
+# ── Core ─────────────────────────────────────────────────────
+numpy>=1.24.0
+loguru>=0.7.0
+
+# ── Computer Vision ──────────────────────────────────────────
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# ── Deep Learning ────────────────────────────────────────────
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Web Server ───────────────────────────────────────────────
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# ── Optional: SAM 2 Segmentation ────────────────────────────
+# Install separately:
+#   pip install segment-anything-2
+#   Download checkpoint from: https://github.com/facebookresearch/segment-anything-2
+
+# ── Optional: Kaggle Datasets ───────────────────────────────
+# pip install kaggle

@@ -1,0 +1,24 @@
+{
+  "job_id": "a0fc8def",
+  "status": "completed",
+  "metrics": {
+    "crack": {
+      "error": "No samples found",
+      "agent": "crack"
+    },
+    "corrosion": {
+      "error": "No samples found",
+      "agent": "corrosion"
+    },
+    "leak": {
+      "error": "No samples found",
+      "agent": "leak"
+    },
+    "general": {
+      "error": "No samples found",
+      "agent": "general"
+    }
+  },
+  "started_at": "2026-02-13T17:43:07.956162",
+  "completed_at": "2026-02-13T17:43:08.028085"
+}

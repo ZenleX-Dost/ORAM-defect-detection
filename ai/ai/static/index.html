@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORAM – Intelligent Inspection Platform</title>
+    <meta name="description" content="TGV Undercarriage Anomaly Detection with AI + SAM 2 Segmentation">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!--  HEADER  -->
+    <header class="header">
+        <div class="header-brand">
+            <div class="logo">O</div>
+            <div>
+                <h1>ORAM</h1>
+                <span class="subtitle">Intelligent Inspection Platform • TGV Undercarriage</span>
+            </div>
+        </div>
+        <div class="header-status">
+            <div class="status-badge">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Offline</span>
+            </div>
+            <div class="status-badge">
+                <span></span>
+                <span id="modelStatus">Loading...</span>
+            </div>
+            <div class="status-badge" id="samBadge" style="display:none;">
+                <span></span>
+                <span>SAM 2</span>
+            </div>
+        </div>
+    </header>
+
+    <!--  MAIN LAYOUT  -->
+    <main class="main-layout">
+
+        <!--  LEFT SIDEBAR  -->
+        <aside class="sidebar-left">
+
+            <!-- Connection Panel -->
+            <section class="panel" id="connectionPanel">
+                <div class="panel-header">
+                    <h2><span class="icon"></span> Camera Connection</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="connection-input-group">
+                        <div class="form-group">
+                            <label>Camera URL / IP Address</label>
+                            <input type="text" id="cameraUrl" placeholder="http://192.168.1.100:8080/video" value="">
+                        </div>
+                        <div class="form-group">
+                            <label>Protocol</label>
+                            <select id="cameraProtocol">
+                                <option value="auto">Auto Detect</option>
+                                <option value="mjpeg">MJPEG Stream</option>
+                                <option value="rtsp">RTSP</option>
+                                <option value="webcam">Local Webcam</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-block" id="btnConnect" onclick="connectCamera()">
+                        Connect
+                    </button>
+                    <button class="btn btn-danger btn-block" id="btnDisconnect" onclick="disconnectCamera()"
+                        style="display:none; margin-top:8px;">
+                        Disconnect
+                    </button>
+                </div>
+            </section>
+
+            <!-- Controls Panel -->
+            <section class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon"></span> Detection Settings</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="control-group">
+                        <label>
+                            Confidence Threshold
+                            <span class="slider-value" id="thresholdValue">50%</span>
+                        </label>
+                        <div class="slider-container">
+                            <input type="range" id="threshold" min="10" max="95" value="50"
+                                oninput="updateThreshold(this.value)">
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <div class="toggle-group">
+                            <span style="font-size: 0.82rem;">SAM 2 Segmentation</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleSam2" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-group">
+                            <span style="font-size: 0.82rem;">Light Preprocessing</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="togglePreprocess" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-group">
+                            <span style="font-size: 0.82rem;">Auto Analyze</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleAutoAnalyze">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Training Panel -->
+            <section class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon"></span> Model Training</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="training-form">
+                        <div class="form-group">
+                            <label>Agent</label>
+                            <select id="trainAgent">
+                                <option value="all">All Agents</option>
+                                <option value="crack">Crack Detector</option>
+                                <option value="corrosion">Corrosion Detector</option>
+                                <option value="leak">Leak Detector</option>
+                                <option value="general">General Classifier</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Dataset</label>
+                            <select id="trainDataset">
+                                <option value="synthetic">Synthetic (Quick Demo)</option>
+                                <option value="railway_track_fault">Railway Track Fault</option>
+                                <option value="surface_crack_kaggle">Surface Crack</option>
+                                <option value="corrosion_mendeley">Corrosion</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Epochs</label>
+                            <input type="number" id="trainEpochs" value="20" min="1" max="200">
+                        </div>
+                        <button class="btn btn-primary btn-block" onclick="startTraining()">
+                            Start Training
+                        </button>
+                    </div>
+                    <div class="training-progress" id="trainingProgress" style="display:none;">
+                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:4px;">
+                            <span id="trainStatusText">Training...</span>
+                            <span id="trainProgressPct">0%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="trainProgressBar" style="width:0%"></div>
+                        </div>
+                        <div class="training-metrics" id="trainMetrics"></div>
+                    </div>
+                </div>
+            </section>
+
+        </aside>
+
+        <!--  CENTER: VIDEO FEED  -->
+        <div class="center-content">
+
+            <section class="panel" style="flex:1;">
+                <div class="panel-header">
+                    <h2><span class="icon"></span> Live Inspection Feed</h2>
+                    <div style="display:flex; gap:6px;">
+                        <span class="badge badge-live" id="liveBadge" style="display:none;"> LIVE</span>
+                        <span class="badge badge-fps" id="fpsBadge">-- FPS</span>
+                        <span class="badge badge-latency" id="latencyBadge">-- ms</span>
+                    </div>
+                </div>
+                <div class="panel-body" style="padding:0;">
+                    <div class="video-container" id="videoContainer">
+                        <canvas id="videoCanvas" width="960" height="600"></canvas>
+                        <div class="video-placeholder" id="videoPlaceholder">
+                            <div class="icon-large"></div>
+                            <p>Connect a camera or upload an image</p>
+                            <p style="font-size:0.75rem; color:var(--text-muted)">
+                                WiFi • MJPEG • RTSP • Webcam
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action bar -->
+            <div class="action-bar">
+                <button class="btn btn-primary" id="btnStartStream" onclick="startStream()" disabled>
+                    Start Inspection
+                </button>
+                <button class="btn btn-danger" id="btnStopStream" onclick="stopStream()" style="display:none;">
+                    ⏹ Stop
+                </button>
+                <button class="btn btn-outline" onclick="captureSnapshot()">
+                    Snapshot
+                </button>
+                <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">
+                    Upload Image
+                </button>
+                <input type="file" class="hidden-input" id="fileInput" accept="image/*" onchange="uploadImage(event)">
+            </div>
+
+            <!-- Upload area -->
+            <div class="upload-area" id="uploadArea" ondragover="event.preventDefault(); this.classList.add('dragover')"
+                ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
+                <div class="icon-upload"></div>
+                <p>Drag & drop an image here to analyze</p>
+            </div>
+        </div>
+
+        <!--  RIGHT SIDEBAR  -->
+        <aside class="sidebar-right">
+
+            <!-- Stats -->
+            <section class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon"></span> Session Stats</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="statFrames">0</div>
+                            <div class="stat-label">Frames Analyzed</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statDetections">0</div>
+                            <div class="stat-label">Detections</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statLatency">--</div>
+                            <div class="stat-label">Avg Latency</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statAccuracy">--</div>
+                            <div class="stat-label">Confidence</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Detections -->
+            <section class="panel" style="flex:1;">
+                <div class="panel-header">
+                    <h2><span class="icon"></span> Detections</h2>
+                    <button class="btn btn-sm btn-outline" onclick="clearDetections()">Clear</button>
+                </div>
+                <div class="panel-body">
+                    <!-- Tabs -->
+                    <div class="tab-nav">
+                        <button class="tab-btn active" onclick="switchTab('live')">Live</button>
+                        <button class="tab-btn" onclick="switchTab('history')">History</button>
+                    </div>
+
+                    <!-- Live detections -->
+                    <div class="tab-content active" id="tab-live">
+                        <div class="detection-list" id="detectionList">
+                            <div class="empty-state" id="emptyDetections">
+                                <div class="icon"></div>
+                                <p>No anomalies detected</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History -->
+                    <div class="tab-content" id="tab-history">
+                        <div class="detection-list" id="historyList">
+                            <div class="empty-state">
+                                <div class="icon"></div>
+                                <p>Detection history will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </main>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="config.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
+```

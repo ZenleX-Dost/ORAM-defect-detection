@@ -237,6 +237,52 @@ class DatasetManager:
         logger.info(f"Dataset '{key}' downloaded – {samples} images found")
         return {"status": "ok", "key": key, "samples": samples, "path": str(dest)}
 
+    async def download_url(self, key: str) -> Dict[str, Any]:
+        """Download a dataset from a direct URL (zip)."""
+        ds = DATASET_CATALOGUE.get(key)
+        if not ds or ds.source != "url":
+            return {"status": "error", "message": f"'{key}' is not a URL dataset."}
+
+        dest = self.root / key
+        dest.mkdir(parents=True, exist_ok=True)
+        
+        # Check if already exists
+        if self._count_images(dest) > 100:
+             return {"status": "ok", "key": key, "samples": self._count_images(dest), "path": str(dest)}
+
+        url = ds.source_id
+        # SDNET2018 direct link override if it's the landing page
+        if key == "sdnet2018" and "digitalcommons.usu.edu" in url and "viewcontent" not in url:
+             url = "https://digitalcommons.usu.edu/context/all_datasets/article/1047/type/native/viewcontent"
+        
+        logger.info(f"Downloading URL dataset '{key}' from {url} ...")
+        
+        # Use simple curl or wget
+        zip_path = dest / "download.zip"
+        # Try curl first
+        cmd = f"curl -L -o \"{zip_path}\" \"{url}\""
+        
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+             return {"status": "error", "message": f"Download failed: {stderr.decode()}"}
+             
+        # Extract
+        try:
+            import zipfile
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(dest)
+            zip_path.unlink()
+        except Exception as e:
+             return {"status": "error", "message": f"Extraction failed: {e}"}
+
+        samples = self._count_images(dest)
+        logger.info(f"Dataset '{key}' downloaded – {samples} images found")
+        return {"status": "ok", "key": key, "samples": samples, "path": str(dest)}
+
     async def create_synthetic(self, key: str, count: int = 500) -> Dict[str, Any]:
         """Create a small synthetic placeholder dataset for quick prototyping."""
         dest = self.root / key

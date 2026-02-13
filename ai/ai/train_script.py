@@ -44,9 +44,9 @@ DEFAULT_AGENTS = [
     AgentConfig(
         agent_type=AgentType.CRACK,
         model_name="efficientnet_b0",
-        dataset_key="surface_crack_kaggle",
+        dataset_key="sdnet2018",
         num_classes=2,
-        class_names=["negative", "positive"],
+        class_names=["non-cracked", "cracked"],
         epochs=30,
         batch_size=32,
         learning_rate=1e-3,
@@ -105,32 +105,83 @@ async def run_training(args: argparse.Namespace):
     logger.info("=" * 60)
 
     # ── 1. Prepare data ──────────────────────────────────────
-    if args.mode == "synthetic":
-        logger.info("Generating synthetic dataset for quick prototyping ...")
-        result = await dm.create_synthetic("synthetic", count=1000)
-        data_root = Path(result["path"])
-        logger.info(f"Synthetic dataset created: {result['samples']} images at {data_root}")
-
-    elif args.mode == "kaggle":
-        key = args.dataset or "railway_track_fault"
-        logger.info(f"Downloading Kaggle dataset: {key}")
-        result = await dm.download_kaggle(key)
-        if result["status"] != "ok":
-            logger.error(f"Download failed: {result['message']}")
-            return
-        data_root = Path(result["path"])
-        logger.info(f"Dataset ready: {result['samples']} images at {data_root}")
-
-    elif args.mode == "local":
-        data_root = Path(args.data_dir)
-        if not data_root.exists():
-            logger.error(f"Data directory does not exist: {data_root}")
-            return
-        logger.info(f"Using local data: {data_root}")
-
+    # We iterate over the *configured* agents (or defaults) to ensure their data is ready.
+    # The 'mode' argument now primarily selects the STRATEGY for getting data if missing.
+    
+    target_agents = []
+    if args.agent:
+        # User specified single agent
+        t = AgentType(args.agent)
+        # Find default config for this agent type to get dataset key
+        def_cfg = next((c for c in DEFAULT_AGENTS if c.agent_type == t), None)
+        if def_cfg: 
+            target_agents = [def_cfg]
+        else:
+            # Fallback
+            target_agents = [AgentConfig(agent_type=t, dataset_key="synthetic")]
     else:
-        logger.error(f"Unknown mode: {args.mode}")
-        return
+        target_agents = DEFAULT_AGENTS
+
+    data_root = dm.root # Default to datasets root
+    
+    for cfg in target_agents:
+        if cfg.dataset_key == "synthetic" or args.mode == "synthetic":
+             logger.info(f"Generating synthetic data for {cfg.agent_type.value}...")
+             await dm.create_synthetic(cfg.dataset_key or "synthetic")
+             continue
+
+        # Check if installed
+        ds_info = dm.get_dataset(cfg.dataset_key)
+        if ds_info and ds_info.get("installed") and ds_info.get("local_samples", 0) > 100:
+             logger.info(f"Dataset {cfg.dataset_key} already available.")
+             continue
+             
+        # Not installed, try download
+        if args.mode == "kaggle": # Implies "try to download real data"
+             logger.info(f"Checking dataset '{cfg.dataset_key}'...")
+             
+             # Special check for SDNET which might be already there but not 'installed' via count
+             # because it was manually fixed
+             if (data_root / cfg.dataset_key).exists() and dm._count_images(data_root / cfg.dataset_key) > 100:
+                  logger.info(f"Dataset {cfg.dataset_key} found on disk.")
+                  continue
+                  
+             logger.info(f"Attempting download for {cfg.dataset_key}...")
+             cat_entry = dm.list_datasets() 
+             from ai.datasets import DATASET_CATALOGUE
+             entry = DATASET_CATALOGUE.get(cfg.dataset_key)
+             
+             if entry:
+                 try:
+                     if entry.source == "kaggle":
+                         res = await dm.download_kaggle(cfg.dataset_key)
+                         if res["status"] != "ok": 
+                             logger.warning(f"Kaggle download failed: {res['message']}. Falling back to synthetic.")
+                             cfg.dataset_key = "synthetic" # Fallback
+                             await dm.create_synthetic("synthetic")
+                     elif entry.source == "url":
+                         # Attempt URL download
+                         res = await dm.download_url(cfg.dataset_key)
+                         if res["status"] != "ok": 
+                             logger.warning(f"URL download failed: {res['message']}. Falling back to synthetic.")
+                             cfg.dataset_key = "synthetic"
+                             await dm.create_synthetic("synthetic")
+                     else:
+                         logger.warning(f"Unknown source for {cfg.dataset_key}, skipping download.")
+                 except Exception as e:
+                     logger.error(f"Error downloading {cfg.dataset_key}: {e}. Fallback to synthetic.")
+                     cfg.dataset_key = "synthetic"
+                     await dm.create_synthetic("synthetic")
+             else:
+                  logger.warning(f"Dataset {cfg.dataset_key} not in catalogue. Fallback to synthetic.")
+                  cfg.dataset_key = "synthetic"
+                  await dm.create_synthetic("synthetic")
+        
+        elif args.mode == "local":
+             # In local mode, we assume data is at args.data_dir
+             # We won't download anything.
+             data_root = Path(args.data_dir)
+             pass
 
     # ── 2. Configure agents ──────────────────────────────────
     agents = []

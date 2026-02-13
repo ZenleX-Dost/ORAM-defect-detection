@@ -1,0 +1,24 @@
+# Datasets and Models
+data/datasets/
+data/models/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDES
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db

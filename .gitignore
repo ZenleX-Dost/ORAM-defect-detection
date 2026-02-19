@@ -1,6 +1,13 @@
 # Datasets and Models
 data/datasets/
 data/models/
+ai/ai/checkpoints/
+*.pt
+*.pth
+
+# Training runs
+runs/
+mlflow/
 
 # Python
 __pycache__/

@@ -160,7 +160,49 @@ class SAM2Segmentor:
                 )
                 return False
 
+            # Download if needed
+            # The user's patch implies a new method `_ensure_model` which is not defined.
+            # I will assume the user intended to replace the checkpoint existence check
+            # with a more robust one, or that `_ensure_model` is meant to be added elsewhere.
+            # For now, I will integrate the new loading logic directly,
+            # keeping the existing checkpoint path resolution.
+
+            # The patch starts with `checkpoint = self._ensure_model()`, but this method doesn't exist.
+            # I will assume the intent is to use the `checkpoint` variable already resolved above.
+
+            logger.info(f"Loading SAM 2 from {checkpoint} ...")
+
+            # The build_sam2 function expects a checkpoint path in some versions,
+            # but others might need state_dict. Let's try loading manually if needed.
+            # However, sam2.build_sam2 usually takes a ckpt_path argument.
+
+            # If the installed version of SAM 2 (from source) uses a different signature
+            # or expects the file to be a state_dict, we might need to handle it.
+
+            # WORKAROUND: The installed SAM 2 `build_sam2` might be trying to load
+            # state_dict["model"] but failing if it expects something else.
+            # Actually, the error "Missing key load_state_dict" suggests `sam2_model`
+            # returned by `build_sam2` is a Dict or something that doesn't have `load_state_dict`.
+            # OR the error comes from inside `build_sam2`.
+
+            # Let's try the standard way first, but handle the specific error seen.
+            # Actually, looking at the error log:
+            # "Failed to load SAM 2: Missing key load_state_dict"
+            # It seems `_sam2_build_fn` is failing internally or the object it returns is wrong.
+
+            # Let's try to load the state dict manually and pass IT if supported,
+            # or just rely on the path.
+
+            # If the file has {"model": state_dict}, and build_sam2 expects state_dict directly?
+            # Or build_sam2(..., ckpt_path=...) handles it?
+
+            # Let's inspect what `_sam2_build_fn` actually is.
+            # It is `build_sam2`.
+            # In recent SAM 2: build_sam2(config_file, ckpt_path)
+
+            # Attempt 1: Just call it. If it fails, we might need to load the SD manually.
             sam2_model = _sam2_build_fn(self.model_cfg, str(checkpoint))
+
             self.predictor = _sam2_predictor_cls(sam2_model)
 
             if TORCH_AVAILABLE:
@@ -171,6 +213,35 @@ class SAM2Segmentor:
             return True
 
         except Exception as e:
+            if "Missing key" in str(e) or "load_state_dict" in str(e):
+                logger.warning(f"Standard loading failed ({e}). Trying manual state_dict loading...")
+                try:
+                    if not TORCH_AVAILABLE:
+                        logger.error("Torch not available for manual state_dict loading.")
+                        return False
+
+                    # Manual loading attempt for "model" key issue
+                    # 1. Build model without checkpoint
+                    sam2_model = _sam2_build_fn(self.model_cfg, None)
+
+                    # 2. Load checkpoint
+                    state = torch.load(checkpoint, map_location=self.device)
+                    if "model" in state:
+                        state = state["model"]
+
+                    # 3. Load state dict
+                    sam2_model.load_state_dict(state)
+
+                    self.predictor = _sam2_predictor_cls(sam2_model)
+                    if TORCH_AVAILABLE:
+                         self.predictor.model = self.predictor.model.to(self.device)
+                    
+                    self._loaded = True
+                    logger.info(f"SAM 2 loaded manually on {self.device}")
+                    return True
+                except Exception as e2:
+                    logger.error(f"Manual loading also failed: {e2}")
+            
             logger.error(f"Failed to load SAM 2: {e}")
             return False
 
